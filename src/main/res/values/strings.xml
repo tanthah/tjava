@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Language Translator</string>
+
+    <!-- Navigation -->
+    <string name="nav_home">Home</string>
+    <string name="nav_camera">Camera</string>
+    <string name="nav_text">Text</string>
+
+    <!-- Home Screen -->
+    <string name="camera_translation">Camera Translation</string>
+    <string name="text_translation">Text Translation</string>
+    <string name="image_translation">Image Translation</string>
+    <string name="voice_translation">Voice Translation</string>
+
+    <!-- Translation -->
+    <string name="enter_text_hint">Enter text to translate</string>
+    <string name="translation_result">Translation will appear here</string>
+    <string name="no_text_detected">No text detected</string>
+    <string name="translate">Translate</string>
+    <string name="translating">Translating...</string>
+    <string name="analyzing_frame">Analyzing current frame...</string>
+
+    <!-- Buttons -->
+    <string name="voice_input">Voice Input</string>
+    <string name="speak">Speak</string>
+    <string name="copy">Copy</string>
+    <string name="select_image">Select Image</string>
+    <string name="take_photo">Take Photo</string>
+    <string name="gallery">Gallery</string>
+    <string name="camera">Camera</string>
+    <string name="listening">Listening...</string>
+    <string name="read">Read</string>
+    <string name="summarize">Summarize</string>
+    <string name="speech_settings">Speech Settings</string>
+
+    <!-- Summarization -->
+    <string name="summary_brief">Brief Summary</string>
+    <string name="summary_detailed">Detailed Summary</string>
+    <string name="summary_bullet_points">Key Points</string>
+    <string name="summary_key_phrases">Key Phrases</string>
+    <string name="summarizing">Summarizing...</string>
+    <string name="summary_failed">Failed to create summary</string>
+    <string name="no_text_to_summarize">No text available to summarize</string>
+
+    <!-- Speech Settings -->
+    <string name="speech_speed">Speech Speed</string>
+    <string name="speed_very_slow">Very Slow</string>
+    <string name="speed_slow">Slow</string>
+    <string name="speed_normal">Normal</string>
+    <string name="speed_fast">Fast</string>
+    <string name="speed_very_fast">Very Fast</string>
+    <string name="speech_speed_updated">Speech speed updated</string>
+
+    <!-- Settings -->
+    <string name="settings">Settings</string>
+    <string name="default_languages">Default Languages</string>
+    <string name="source_language">Source Language</string>
+    <string name="target_language">Target Language</string>
+    <string name="theme">Theme</string>
+    <string name="font_size">Font Size</string>
+    <string name="auto_detect_language">Auto-detect Language</string>
+    <string name="text_to_speech">Text-to-Speech</string>
+    <string name="camera_auto_translate">Camera Auto-translate</string>
+    <string name="save_settings">Save Settings</string>
+
+    <!-- Permissions -->
+    <string name="camera_permission_required">Camera permission is required</string>
+    <string name="audio_permission_required">Audio permission is required</string>
+    <string name="storage_permission_required">Storage permission is required</string>
+
+    <!-- Errors -->
+    <string name="translation_failed">Translation failed</string>
+    <string name="no_internet_connection">No internet connection</string>
+    <string name="text_recognition_failed">Text recognition failed</string>
+    <string name="speech_recognition_failed">Speech recognition failed</string>
+    <string name="translation_service_error">Translation service error</string>
+    <string name="generic_error">An error occurred. Please try again.</string>
+    <string name="network_timeout">Request timed out. Please try again.</string>
+    <string name="model_download_failed">Failed to download translation model</string>
+    <string name="no_detected_text_to_speak">No detected text to speak</string>
+    <string name="no_translated_text_to_speak">No translated text to speak</string>
+    <string name="no_summary_to_speak">No summary to speak</string>
+    <string name="failed_to_speak_text">Failed to speak text</string>
+
+    <!-- Success Messages -->
+    <string name="text_copied">Text copied to clipboard</string>
+    <string name="settings_saved">Settings saved successfully</string>
+
+    <!-- Content Descriptions for Accessibility -->
+    <string name="swap_languages_description">Swap source and target languages</string>
+    <string name="voice_input_description">Start voice input</string>
+    <string name="speak_translation_description">Speak translated text</string>
+    <string name="copy_translation_description">Copy translated text</string>
+    <string name="camera_capture_description">Capture image for translation</string>
+    <string name="flash_toggle_description">Toggle camera flash</string>
+    <string name="speak_detected_description">Read detected text aloud</string>
+    <string name="speak_summary_description">Read summary aloud</string>
+    <string name="summarize_description">Create text summary</string>
+    <string name="speech_settings_description">Adjust speech settings</string>
+
+    <!-- Language Detection -->
+    <string name="language_detected">Language detected: %s</string>
+    <string name="auto_detect">Auto-detect</string>
+
+    <!-- Camera -->
+    <string name="camera_error">Camera error occurred</string>
+    <string name="camera_not_available">Camera not available</string>
+    <string name="image_processing">Processing image...</string>
+
+    <!-- Voice -->
+    <string name="tts_not_available">Text-to-speech not available</string>
+    <string name="speech_recognition_not_available">Speech recognition not available</string>
+
+    <!-- File operations -->
+    <string name="image_load_failed">Failed to load image</string>
+    <string name="image_too_large">Image too large. Please select a smaller image.</string>
+
+    <!-- Camera specific labels -->
+    <string name="detected_text_label">Detected Text:</string>
+    <string name="translation_label">Translation:</string>
+    <string name="summary_label">Summary:</string>
+
+    <!-- Dialog Messages -->
+    <string name="choose_summary_type">Choose Summary Type</string>
+    <string name="summary_type_brief">Brief Summary (1-2 sentences)</string>
+    <string name="summary_type_detailed">Detailed Summary (3-5 sentences)</string>
+    <string name="summary_type_bullet">Key Points (Bullet format)</string>
+    <string name="summary_type_phrases">Key Phrases</string>
+    <string name="cancel">Cancel</string>
+    <string name="apply">Apply</string>
+
+    <!-- Tips and Instructions -->
+    <string name="speech_tip">💡 Tip: Slower speeds are better for learning pronunciation</string>
+    <string name="crop_instructions">• Pinch to zoom in/out\n• Drag to move image\n• Drag corners to select text area\n• Tap confirm when ready</string>
+    <string name="area_selected">Area selected. Tap translate to process.</string>
+</resources>
