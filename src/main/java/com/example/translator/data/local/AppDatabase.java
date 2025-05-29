@@ -11,7 +11,7 @@ import com.example.translator.data.model.UserPreferences;
 
 @Database(
         entities = {Language.class, UserPreferences.class},
-        version = 1,
+        version = 2, // Đã tăng từ 1 lên 2 để sửa lỗi schema mismatch
         exportSchema = false
 )
 public abstract class AppDatabase extends RoomDatabase {

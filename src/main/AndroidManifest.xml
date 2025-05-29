@@ -13,6 +13,7 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
 
+    <!-- Network permissions for ML Kit -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
@@ -35,6 +36,11 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Translator"
         tools:targetApi="31">
+
+        <!-- ML Kit Text Recognition meta-data -->
+        <meta-data
+            android:name="com.google.mlkit.vision.DEPENDENCIES"
+            android:value="ocr" />
 
         <!-- Main Activity -->
         <activity

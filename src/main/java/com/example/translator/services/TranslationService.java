@@ -43,43 +43,38 @@ public class TranslationService {
 
     public TranslationService(Context context) {
         this.context = context;
-        this.languageIdentifier = LanguageIdentification.getClient();
-        this.translators = new HashMap<>();
-        this.downloadedModels = new HashSet<>();
+        try {
+            this.languageIdentifier = LanguageIdentification.getClient();
+            this.translators = new HashMap<>();
+            this.downloadedModels = new HashSet<>();
+            Log.d(TAG, "TranslationService initialized successfully");
+        } catch (Exception e) {
+            Log.e(TAG, "Error initializing TranslationService", e);
+        }
     }
 
     public void detectLanguage(String text, LanguageDetectionCallback callback) {
-        if (!isValidInput(text)) {
-            callback.onFailure(new IllegalArgumentException("Invalid input text"));
-            return;
-        }
-
-        if (!isNetworkAvailable()) {
-            callback.onFailure(new NetworkException("No internet connection available"));
+        if (!isValidInput(text) || callback == null) {
+            if (callback != null) {
+                callback.onFailure(new IllegalArgumentException("Invalid input text"));
+            }
             return;
         }
 
         try {
+            Log.d(TAG, "Detecting language for text: " + text.substring(0, Math.min(50, text.length())) + "...");
+
             Task<String> task = languageIdentifier.identifyLanguage(text);
-
-            // Add timeout to the task
-            Task<String> timedTask = Tasks.call(() -> {
-                try {
-                    return Tasks.await(task, LANGUAGE_DETECTION_TIMEOUT, TimeUnit.MILLISECONDS);
-                } catch (Exception e) {
-                    throw new RuntimeException("Language detection timed out", e);
-                }
-            });
-
-            timedTask.addOnSuccessListener(detectedLanguage -> {
+            task.addOnSuccessListener(detectedLanguage -> {
+                Log.d(TAG, "Language detection result: " + detectedLanguage);
                 if ("und".equals(detectedLanguage)) {
-                    callback.onSuccess(null);
+                    callback.onSuccess("en"); // Default to English if undetermined
                 } else {
                     callback.onSuccess(detectedLanguage);
                 }
             }).addOnFailureListener(e -> {
                 Log.e(TAG, "Language detection failed", e);
-                callback.onFailure(handleTranslationException(e));
+                callback.onFailure(e);
             });
 
         } catch (Exception e) {
@@ -90,26 +85,39 @@ public class TranslationService {
 
     public void translateText(String text, String sourceLanguage, String targetLanguage,
                               TranslationCallback callback) {
-        if (!isValidInput(text)) {
-            callback.onFailure(new IllegalArgumentException("Invalid input text"));
+        if (!isValidInput(text) || callback == null) {
+            if (callback != null) {
+                callback.onFailure(new IllegalArgumentException("Invalid input text"));
+            }
             return;
         }
 
-        if (!isNetworkAvailable()) {
-            callback.onFailure(new NetworkException("No internet connection available"));
+        if (sourceLanguage == null || targetLanguage == null) {
+            if (callback != null) {
+                callback.onFailure(new IllegalArgumentException("Source and target languages cannot be null"));
+            }
             return;
         }
 
         if (sourceLanguage.equals(targetLanguage)) {
-            callback.onSuccess(text); // No translation needed
+            Log.d(TAG, "Source and target languages are the same, returning original text");
+            callback.onSuccess(text);
             return;
         }
+
+        Log.d(TAG, "Translating from " + sourceLanguage + " to " + targetLanguage);
+        Log.d(TAG, "Text preview: " + text.substring(0, Math.min(100, text.length())) + "...");
 
         try {
             String translatorKey = sourceLanguage + "_" + targetLanguage;
             Translator translator = getOrCreateTranslator(sourceLanguage, targetLanguage, translatorKey);
 
-            // Ensure model is downloaded
+            if (translator == null) {
+                callback.onFailure(new TranslationException("Failed to create translator"));
+                return;
+            }
+
+            // Download model if needed and then translate
             downloadModelIfNeeded(translator, translatorKey, new ModelDownloadCallback() {
                 @Override
                 public void onSuccess() {
@@ -118,68 +126,110 @@ public class TranslationService {
 
                 @Override
                 public void onFailure(Exception e) {
-                    callback.onFailure(new TranslationException("Failed to download translation model", e));
+                    Log.e(TAG, "Model download failed", e);
+                    callback.onFailure(new TranslationException("Failed to download translation model: " + e.getMessage(), e));
                 }
             });
 
         } catch (Exception e) {
             Log.e(TAG, "Translation failed for " + sourceLanguage + " -> " + targetLanguage, e);
-            callback.onFailure(handleTranslationException(e));
+            callback.onFailure(new TranslationException("Translation failed: " + e.getMessage(), e));
         }
     }
 
     private void performTranslation(Translator translator, String text, TranslationCallback callback) {
         try {
+            Log.d(TAG, "Performing translation...");
             Task<String> task = translator.translate(text);
 
-            // Add timeout to the task
-            Task<String> timedTask = Tasks.call(() -> {
-                try {
-                    return Tasks.await(task, TRANSLATION_TIMEOUT, TimeUnit.MILLISECONDS);
-                } catch (Exception e) {
-                    throw new RuntimeException("Translation timed out", e);
-                }
+            task.addOnSuccessListener(translatedText -> {
+                Log.d(TAG, "Translation successful: " + translatedText.substring(0, Math.min(100, translatedText.length())) + "...");
+                callback.onSuccess(translatedText);
+            }).addOnFailureListener(e -> {
+                Log.e(TAG, "Translation task failed", e);
+                callback.onFailure(new TranslationException("Translation failed: " + e.getMessage(), e));
             });
-
-            timedTask.addOnSuccessListener(callback::onSuccess)
-                    .addOnFailureListener(e -> {
-                        Log.e(TAG, "Translation task failed", e);
-                        callback.onFailure(handleTranslationException(e));
-                    });
 
         } catch (Exception e) {
             Log.e(TAG, "Error performing translation", e);
-            callback.onFailure(e);
+            callback.onFailure(new TranslationException("Translation error: " + e.getMessage(), e));
         }
     }
 
     private Translator getOrCreateTranslator(String sourceLanguage, String targetLanguage, String translatorKey) {
-        if (translators.containsKey(translatorKey)) {
-            return translators.get(translatorKey);
-        }
+        try {
+            if (translators.containsKey(translatorKey)) {
+                Log.d(TAG, "Using existing translator for " + translatorKey);
+                return translators.get(translatorKey);
+            }
 
-        Translator translator = createTranslator(sourceLanguage, targetLanguage);
-        translators.put(translatorKey, translator);
-        return translator;
+            Log.d(TAG, "Creating new translator for " + translatorKey);
+            Translator translator = createTranslator(sourceLanguage, targetLanguage);
+            if (translator != null) {
+                translators.put(translatorKey, translator);
+                Log.d(TAG, "Successfully created translator for " + translatorKey);
+            }
+            return translator;
+        } catch (Exception e) {
+            Log.e(TAG, "Error creating translator", e);
+            return null;
+        }
     }
 
     private Translator createTranslator(String sourceLanguage, String targetLanguage) {
-        String sourceTranslateLanguage = TranslateLanguage.fromLanguageTag(sourceLanguage);
-        if (sourceTranslateLanguage == null) {
-            sourceTranslateLanguage = TranslateLanguage.ENGLISH;
+        try {
+            // Map language codes to ML Kit language codes
+            String sourceMLKitLanguage = mapToMLKitLanguage(sourceLanguage);
+            String targetMLKitLanguage = mapToMLKitLanguage(targetLanguage);
+
+            if (sourceMLKitLanguage == null || targetMLKitLanguage == null) {
+                Log.e(TAG, "Unsupported language: " + sourceLanguage + " -> " + targetLanguage);
+                return null;
+            }
+
+            Log.d(TAG, "Creating translator: " + sourceMLKitLanguage + " -> " + targetMLKitLanguage);
+
+            TranslatorOptions options = new TranslatorOptions.Builder()
+                    .setSourceLanguage(sourceMLKitLanguage)
+                    .setTargetLanguage(targetMLKitLanguage)
+                    .build();
+
+            return Translation.getClient(options);
+        } catch (Exception e) {
+            Log.e(TAG, "Error in createTranslator", e);
+            return null;
         }
+    }
 
-        String targetTranslateLanguage = TranslateLanguage.fromLanguageTag(targetLanguage);
-        if (targetTranslateLanguage == null) {
-            targetTranslateLanguage = TranslateLanguage.VIETNAMESE;
+    private String mapToMLKitLanguage(String languageCode) {
+        // Map common language codes to ML Kit language codes
+        switch (languageCode.toLowerCase()) {
+            case "en": return TranslateLanguage.ENGLISH;
+            case "vi": return TranslateLanguage.VIETNAMESE;
+            case "es": return TranslateLanguage.SPANISH;
+            case "fr": return TranslateLanguage.FRENCH;
+            case "de": return TranslateLanguage.GERMAN;
+            case "it": return TranslateLanguage.ITALIAN;
+            case "pt": return TranslateLanguage.PORTUGUESE;
+            case "ru": return TranslateLanguage.RUSSIAN;
+            case "zh": return TranslateLanguage.CHINESE;
+            case "ja": return TranslateLanguage.JAPANESE;
+            case "ko": return TranslateLanguage.KOREAN;
+            case "th": return TranslateLanguage.THAI;
+            case "hi": return TranslateLanguage.HINDI;
+            case "ar": return TranslateLanguage.ARABIC;
+            case "nl": return TranslateLanguage.DUTCH;
+            case "sv": return TranslateLanguage.SWEDISH;
+            case "da": return TranslateLanguage.DANISH;
+            case "fi": return TranslateLanguage.FINNISH;
+            case "pl": return TranslateLanguage.POLISH;
+            case "cs": return TranslateLanguage.CZECH;
+            case "tr": return TranslateLanguage.TURKISH;
+            case "af": return TranslateLanguage.AFRIKAANS;
+            default:
+                Log.w(TAG, "Unsupported language code: " + languageCode);
+                return null;
         }
-
-        TranslatorOptions options = new TranslatorOptions.Builder()
-                .setSourceLanguage(sourceTranslateLanguage)
-                .setTargetLanguage(targetTranslateLanguage)
-                .build();
-
-        return Translation.getClient(options);
     }
 
     private interface ModelDownloadCallback {
@@ -189,109 +239,56 @@ public class TranslationService {
 
     private void downloadModelIfNeeded(Translator translator, String translatorKey, ModelDownloadCallback callback) {
         if (downloadedModels.contains(translatorKey)) {
+            Log.d(TAG, "Model already downloaded for " + translatorKey);
             callback.onSuccess();
             return;
         }
 
         try {
+            Log.d(TAG, "Downloading model for " + translatorKey);
             DownloadConditions conditions = new DownloadConditions.Builder()
-                    .requireWifi()
-                    .build();
+                    .build(); // Allow download on any network
 
             translator.downloadModelIfNeeded(conditions)
                     .addOnSuccessListener(aVoid -> {
                         downloadedModels.add(translatorKey);
-                        Log.d(TAG, "Translation model downloaded for " + translatorKey);
+                        Log.d(TAG, "Model downloaded successfully for " + translatorKey);
                         callback.onSuccess();
                     })
                     .addOnFailureListener(e -> {
-                        Log.w(TAG, "Failed to download translation model for " + translatorKey, e);
-
-                        // Try without WiFi requirement
-                        DownloadConditions fallbackConditions = new DownloadConditions.Builder().build();
-                        translator.downloadModelIfNeeded(fallbackConditions)
-                                .addOnSuccessListener(aVoid -> {
-                                    downloadedModels.add(translatorKey);
-                                    Log.d(TAG, "Translation model downloaded (fallback) for " + translatorKey);
-                                    callback.onSuccess();
-                                })
-                                .addOnFailureListener(fallbackException -> {
-                                    Log.e(TAG, "Failed to download translation model (fallback) for " + translatorKey, fallbackException);
-                                    callback.onFailure(fallbackException);
-                                });
+                        Log.e(TAG, "Model download failed for " + translatorKey, e);
+                        callback.onFailure(e);
                     });
 
         } catch (Exception e) {
-            Log.e(TAG, "Exception during model download", e);
+            Log.e(TAG, "Exception during model download for " + translatorKey, e);
             callback.onFailure(e);
         }
     }
 
     private boolean isValidInput(String text) {
-        return text != null &&
-                !text.trim().isEmpty() &&
-                text.length() <= MAX_TEXT_LENGTH &&
-                !containsSuspiciousContent(text);
-    }
-
-    private boolean containsSuspiciousContent(String text) {
-        String[] suspiciousPatterns = {
-                "<script", "javascript:", "data:", "vbscript:"
-        };
-
-        String lowerText = text.toLowerCase();
-        for (String pattern : suspiciousPatterns) {
-            if (lowerText.contains(pattern)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private boolean isNetworkAvailable() {
-        ConnectivityManager connectivityManager = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
-        if (connectivityManager == null) {
+        if (text == null || text.trim().isEmpty()) {
+            Log.w(TAG, "Input text is null or empty");
             return false;
         }
 
-        android.net.Network network = connectivityManager.getActiveNetwork();
-        if (network == null) {
+        if (text.length() > MAX_TEXT_LENGTH) {
+            Log.w(TAG, "Input text too long: " + text.length() + " characters");
             return false;
         }
 
-        NetworkCapabilities networkCapabilities = connectivityManager.getNetworkCapabilities(network);
-        if (networkCapabilities == null) {
-            return false;
-        }
-
-        return networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
-                networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED);
-    }
-
-    private Exception handleTranslationException(Exception exception) {
-        String message = exception.getMessage();
-        if (message == null) {
-            message = "";
-        }
-
-        if (message.toLowerCase().contains("network") || message.toLowerCase().contains("internet")) {
-            return new NetworkException("Network error: " + message);
-        } else if (message.toLowerCase().contains("timeout")) {
-            return new TranslationException("Translation timed out. Please try again.");
-        } else if (message.toLowerCase().contains("model")) {
-            return new TranslationException("Translation model not available. Please check your connection.");
-        } else {
-            return new TranslationException("Translation failed: " + (message.isEmpty() ? "Unknown error" : message));
-        }
+        return true;
     }
 
     public void closeTranslators() {
         try {
-            for (Translator translator : translators.values()) {
+            Log.d(TAG, "Closing translators...");
+            for (Map.Entry<String, Translator> entry : translators.entrySet()) {
                 try {
-                    translator.close();
+                    entry.getValue().close();
+                    Log.d(TAG, "Closed translator: " + entry.getKey());
                 } catch (Exception e) {
-                    Log.w(TAG, "Error closing translator", e);
+                    Log.w(TAG, "Error closing translator: " + entry.getKey(), e);
                 }
             }
             translators.clear();

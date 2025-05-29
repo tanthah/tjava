@@ -73,79 +73,105 @@ public class ImageTranslationViewModel extends ViewModel {
         // Initialize speech service
         speechService.initializeTextToSpeech(success -> {
             if (!success) {
-                _errorMessage.postValue("Text-to-speech not available");
+                Log.w(TAG, "Text-to-speech not available");
             }
         });
         _speechRate.setValue(currentSpeechRate);
+        _isLoading.setValue(false);
+        _isSummarizing.setValue(false);
+
+        Log.d(TAG, "ImageTranslationViewModel initialized");
     }
 
     public void processImage(Bitmap bitmap, String sourceLanguage, String targetLanguage) {
+        Log.d(TAG, "Starting image processing...");
+        Log.d(TAG, "Languages: " + sourceLanguage + " -> " + targetLanguage);
+
         executor.execute(() -> {
             try {
                 _isLoading.postValue(true);
                 _errorMessage.postValue(null);
-
-                Log.d(TAG, "Starting image processing...");
+                _detectedText.postValue(null);
+                _translationResult.postValue(null);
 
                 // Step 1: Validate inputs
                 if (!isValidBitmap(bitmap)) {
+                    Log.e(TAG, "Invalid bitmap provided");
                     _errorMessage.postValue("Invalid image. Please select a different image.");
+                    _isLoading.postValue(false);
                     return;
                 }
 
-                if (sourceLanguage.isEmpty() || targetLanguage.isEmpty()) {
+                if (sourceLanguage == null || targetLanguage == null ||
+                        sourceLanguage.isEmpty() || targetLanguage.isEmpty()) {
+                    Log.e(TAG, "Invalid languages: " + sourceLanguage + " -> " + targetLanguage);
                     _errorMessage.postValue("Please select source and target languages.");
+                    _isLoading.postValue(false);
                     return;
                 }
+
+                Log.d(TAG, "Bitmap info: " + bitmap.getWidth() + "x" + bitmap.getHeight() +
+                        ", Config: " + bitmap.getConfig() + ", Bytes: " + bitmap.getByteCount());
 
                 // Step 2: Recognize text from image
-                Log.d(TAG, "Recognizing text from image...");
+                Log.d(TAG, "Starting text recognition...");
                 textRecognitionService.recognizeTextFromBitmap(bitmap, new TextRecognitionService.TextRecognitionCallback() {
                     @Override
                     public void onSuccess(String recognizedText) {
-                        if (recognizedText == null || recognizedText.isEmpty()) {
+                        Log.d(TAG, "Text recognition successful");
+                        Log.d(TAG, "Recognized text: '" + recognizedText + "'");
+
+                        if (recognizedText == null || recognizedText.trim().isEmpty()) {
                             Log.w(TAG, "No text detected in image");
-                            _detectedText.postValue(null);
+                            _detectedText.postValue("");
                             _errorMessage.postValue("No text detected in the selected area. Try selecting a different area or image with clearer text.");
                             _isLoading.postValue(false);
                             return;
                         }
 
-                        Log.d(TAG, "Text recognized: " + recognizedText.length() + " characters");
-                        _detectedText.postValue(recognizedText);
+                        String cleanText = recognizedText.trim();
+                        _detectedText.postValue(cleanText);
 
                         // Step 3: Translate the recognized text if languages are different
                         if (sourceLanguage.equals(targetLanguage)) {
                             Log.d(TAG, "Source and target languages are the same, skipping translation");
-                            _translationResult.postValue(recognizedText);
+                            _translationResult.postValue(cleanText);
                             _isLoading.postValue(false);
                         } else {
-                            Log.d(TAG, "Translating text from " + sourceLanguage + " to " + targetLanguage + "...");
-                            translationService.translateText(recognizedText, sourceLanguage, targetLanguage,
+                            Log.d(TAG, "Starting translation: " + sourceLanguage + " -> " + targetLanguage);
+                            translationService.translateText(cleanText, sourceLanguage, targetLanguage,
                                     new TranslationService.TranslationCallback() {
                                         @Override
                                         public void onSuccess(String translatedText) {
-                                            if (translatedText == null || translatedText.isEmpty()) {
-                                                Log.w(TAG, "Translation failed or returned empty result");
-                                                _translationResult.postValue(null);
+                                            Log.d(TAG, "Translation successful");
+                                            Log.d(TAG, "Translated text: '" + translatedText + "'");
+
+                                            if (translatedText == null || translatedText.trim().isEmpty()) {
+                                                Log.w(TAG, "Translation returned empty result");
+                                                _translationResult.postValue("Translation failed - empty result");
                                                 _errorMessage.postValue("Translation failed. Please check your internet connection and try again.");
                                             } else {
-                                                Log.d(TAG, "Translation successful: " + translatedText.length() + " characters");
-                                                _translationResult.postValue(translatedText);
+                                                _translationResult.postValue(translatedText.trim());
                                             }
                                             _isLoading.postValue(false);
                                         }
 
                                         @Override
                                         public void onFailure(Exception exception) {
-                                            Log.e(TAG, "Translation error", exception);
+                                            Log.e(TAG, "Translation failed", exception);
+                                            _translationResult.postValue(null);
+
+                                            String errorMsg = "Translation failed";
                                             if (exception instanceof TranslationService.NetworkException) {
-                                                _errorMessage.postValue("No internet connection. Please check your network and try again.");
+                                                errorMsg = "No internet connection. Please check your network and try again.";
                                             } else if (exception instanceof TranslationService.TranslationException) {
-                                                _errorMessage.postValue(exception.getMessage() != null ? exception.getMessage() : "Translation service error. Please try again.");
-                                            } else {
-                                                _errorMessage.postValue("An unexpected error occurred: " + (exception.getMessage() != null ? exception.getMessage() : "Unknown error"));
+                                                String msg = exception.getMessage();
+                                                errorMsg = (msg != null && !msg.isEmpty()) ? msg : "Translation service error. Please try again.";
+                                            } else if (exception != null && exception.getMessage() != null) {
+                                                errorMsg = "Translation error: " + exception.getMessage();
                                             }
+
+                                            _errorMessage.postValue(errorMsg);
                                             _isLoading.postValue(false);
                                         }
                                     });
@@ -154,16 +180,26 @@ public class ImageTranslationViewModel extends ViewModel {
 
                     @Override
                     public void onFailure(Exception exception) {
-                        Log.e(TAG, "Text recognition error", exception);
+                        Log.e(TAG, "Text recognition failed", exception);
                         _detectedText.postValue(null);
-                        _errorMessage.postValue("Text recognition failed: " + exception.getMessage());
+
+                        String errorMsg = "Text recognition failed";
+                        if (exception != null && exception.getMessage() != null) {
+                            errorMsg = "Text recognition failed: " + exception.getMessage();
+                        }
+
+                        _errorMessage.postValue(errorMsg);
                         _isLoading.postValue(false);
                     }
                 });
 
             } catch (Exception e) {
-                Log.e(TAG, "Unexpected error during processing", e);
-                _errorMessage.postValue("An unexpected error occurred: " + (e.getMessage() != null ? e.getMessage() : "Unknown error"));
+                Log.e(TAG, "Unexpected error during image processing", e);
+                String errorMsg = "An unexpected error occurred";
+                if (e.getMessage() != null) {
+                    errorMsg += ": " + e.getMessage();
+                }
+                _errorMessage.postValue(errorMsg);
                 _isLoading.postValue(false);
             }
         });
@@ -172,7 +208,8 @@ public class ImageTranslationViewModel extends ViewModel {
     public void summarizeDetectedText(TextSummarizationService.SummaryType summaryType, String targetLanguage) {
         String textToSummarize = _detectedText.getValue();
 
-        if (textToSummarize == null || textToSummarize.isEmpty()) {
+        if (textToSummarize == null || textToSummarize.trim().isEmpty()) {
+            Log.w(TAG, "No text available to summarize");
             _errorMessage.postValue("No text available to summarize");
             return;
         }
@@ -182,27 +219,28 @@ public class ImageTranslationViewModel extends ViewModel {
                 _isSummarizing.postValue(true);
                 _errorMessage.postValue(null);
 
-                Log.d(TAG, "Summarizing text...");
+                Log.d(TAG, "Starting text summarization...");
                 summarizationService.summarizeText(textToSummarize, summaryType, targetLanguage,
                         new TextSummarizationService.SummarizationCallback() {
                             @Override
                             public void onSuccess(TextSummarizationService.SummaryResult.Success result) {
-                                _summaryResult.postValue(result.summary);
                                 Log.d(TAG, "Summarization successful");
+                                _summaryResult.postValue(result.summary);
                                 _isSummarizing.postValue(false);
                             }
 
                             @Override
                             public void onFailure(TextSummarizationService.SummaryResult.Error error) {
-                                _errorMessage.postValue(error.message);
                                 Log.e(TAG, "Summarization failed: " + error.message);
+                                _errorMessage.postValue(error.message);
                                 _isSummarizing.postValue(false);
                             }
                         });
 
             } catch (Exception e) {
                 Log.e(TAG, "Error during summarization", e);
-                _errorMessage.postValue("Summarization failed: " + e.getMessage());
+                _errorMessage.postValue("Summarization failed: " +
+                        (e.getMessage() != null ? e.getMessage() : "Unknown error"));
                 _isSummarizing.postValue(false);
             }
         });
@@ -210,12 +248,14 @@ public class ImageTranslationViewModel extends ViewModel {
 
     public void speakDetectedText(String languageCode) {
         String text = _detectedText.getValue();
-        if (text == null || text.isEmpty()) {
+        if (text == null || text.trim().isEmpty()) {
+            Log.w(TAG, "No detected text to speak");
             _errorMessage.postValue("No detected text to speak");
             return;
         }
 
         try {
+            Log.d(TAG, "Speaking detected text in " + languageCode);
             speechService.speakText(text, languageCode, currentSpeechRate);
         } catch (Exception e) {
             Log.e(TAG, "Error speaking detected text", e);
@@ -225,12 +265,14 @@ public class ImageTranslationViewModel extends ViewModel {
 
     public void speakTranslatedText(String languageCode) {
         String text = _translationResult.getValue();
-        if (text == null || text.isEmpty()) {
+        if (text == null || text.trim().isEmpty()) {
+            Log.w(TAG, "No translated text to speak");
             _errorMessage.postValue("No translated text to speak");
             return;
         }
 
         try {
+            Log.d(TAG, "Speaking translated text in " + languageCode);
             speechService.speakText(text, languageCode, currentSpeechRate);
         } catch (Exception e) {
             Log.e(TAG, "Error speaking translated text", e);
@@ -240,12 +282,14 @@ public class ImageTranslationViewModel extends ViewModel {
 
     public void speakSummary(String languageCode) {
         String text = _summaryResult.getValue();
-        if (text == null || text.isEmpty()) {
+        if (text == null || text.trim().isEmpty()) {
+            Log.w(TAG, "No summary to speak");
             _errorMessage.postValue("No summary to speak");
             return;
         }
 
         try {
+            Log.d(TAG, "Speaking summary in " + languageCode);
             speechService.speakText(text, languageCode, currentSpeechRate);
         } catch (Exception e) {
             Log.e(TAG, "Error speaking summary", e);
@@ -257,10 +301,16 @@ public class ImageTranslationViewModel extends ViewModel {
         currentSpeechRate = Math.max(SpeechService.SPEED_VERY_SLOW, Math.min(rate, SpeechService.SPEED_VERY_FAST));
         speechService.setSpeechRate(currentSpeechRate);
         _speechRate.postValue(currentSpeechRate);
+        Log.d(TAG, "Speech rate set to: " + currentSpeechRate);
     }
 
     public void stopSpeaking() {
-        speechService.stopSpeaking();
+        try {
+            speechService.stopSpeaking();
+            Log.d(TAG, "Speech stopped");
+        } catch (Exception e) {
+            Log.e(TAG, "Error stopping speech", e);
+        }
     }
 
     public String getSpeechRateText(float rate) {
@@ -280,12 +330,23 @@ public class ImageTranslationViewModel extends ViewModel {
     }
 
     private boolean isValidBitmap(Bitmap bitmap) {
-        return bitmap != null &&
-                !bitmap.isRecycled() &&
-                bitmap.getWidth() > 0 &&
-                bitmap.getHeight() > 0 &&
-                bitmap.getWidth() <= 4096 &&
-                bitmap.getHeight() <= 4096;
+        if (bitmap == null) {
+            Log.e(TAG, "Bitmap is null");
+            return false;
+        }
+        if (bitmap.isRecycled()) {
+            Log.e(TAG, "Bitmap is recycled");
+            return false;
+        }
+        if (bitmap.getWidth() <= 0 || bitmap.getHeight() <= 0) {
+            Log.e(TAG, "Bitmap has invalid dimensions: " + bitmap.getWidth() + "x" + bitmap.getHeight());
+            return false;
+        }
+        if (bitmap.getWidth() > 4096 || bitmap.getHeight() > 4096) {
+            Log.e(TAG, "Bitmap too large: " + bitmap.getWidth() + "x" + bitmap.getHeight());
+            return false;
+        }
+        return true;
     }
 
     public void clearResults() {
@@ -293,6 +354,7 @@ public class ImageTranslationViewModel extends ViewModel {
         _translationResult.setValue(null);
         _summaryResult.setValue(null);
         _errorMessage.setValue(null);
+        Log.d(TAG, "Results cleared");
     }
 
     public void clearError() {
@@ -302,12 +364,19 @@ public class ImageTranslationViewModel extends ViewModel {
     @Override
     protected void onCleared() {
         super.onCleared();
-
         Log.d(TAG, "ViewModel cleared, cleaning up resources");
 
         // Shutdown executor
-        if (executor != null) {
+        if (executor != null && !executor.isShutdown()) {
             executor.shutdown();
+            try {
+                if (!executor.awaitTermination(1, java.util.concurrent.TimeUnit.SECONDS)) {
+                    executor.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                executor.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
         }
 
         // Close services

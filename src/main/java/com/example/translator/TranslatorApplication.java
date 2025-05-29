@@ -1,6 +1,7 @@
 package com.example.translator;
 
 import android.app.Application;
+import android.util.Log;
 import com.example.translator.data.local.AppDatabase;
 import com.example.translator.data.repository.LanguageRepository;
 import com.example.translator.data.repository.UserRepository;
@@ -8,6 +9,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class TranslatorApplication extends Application {
+
+    private static final String TAG = "TranslatorApplication";
 
     // Application scope for background tasks
     private ExecutorService applicationExecutor;
@@ -18,21 +21,36 @@ public class TranslatorApplication extends Application {
 
     public AppDatabase getDatabase() {
         if (database == null) {
-            database = AppDatabase.getDatabase(this);
+            synchronized (this) {
+                if (database == null) {
+                    database = AppDatabase.getDatabase(this);
+                    Log.d(TAG, "Database initialized");
+                }
+            }
         }
         return database;
     }
 
     public LanguageRepository getLanguageRepository() {
         if (languageRepository == null) {
-            languageRepository = new LanguageRepository(this);
+            synchronized (this) {
+                if (languageRepository == null) {
+                    languageRepository = new LanguageRepository(this);
+                    Log.d(TAG, "LanguageRepository initialized");
+                }
+            }
         }
         return languageRepository;
     }
 
     public UserRepository getUserRepository() {
         if (userRepository == null) {
-            userRepository = new UserRepository(this);
+            synchronized (this) {
+                if (userRepository == null) {
+                    userRepository = new UserRepository(this);
+                    Log.d(TAG, "UserRepository initialized");
+                }
+            }
         }
         return userRepository;
     }
@@ -40,26 +58,50 @@ public class TranslatorApplication extends Application {
     @Override
     public void onCreate() {
         super.onCreate();
+        Log.d(TAG, "TranslatorApplication onCreate");
 
-        // Initialize application executor
-        applicationExecutor = Executors.newFixedThreadPool(4);
+        try {
+            // Initialize application executor
+            applicationExecutor = Executors.newFixedThreadPool(4);
+            Log.d(TAG, "Application executor initialized");
 
-        // Initialize supported languages data in background
-        applicationExecutor.execute(() -> {
-            try {
-                getLanguageRepository().initializeSupportedLanguages();
-            } catch (Exception e) {
-                // Handle initialization error gracefully
-                e.printStackTrace();
-            }
-        });
+            // Initialize repositories to ensure database is created
+            getDatabase();
+            getLanguageRepository();
+            getUserRepository();
+
+            // Initialize supported languages data in background
+            applicationExecutor.execute(() -> {
+                try {
+                    Log.d(TAG, "Starting language initialization...");
+                    getLanguageRepository().initializeSupportedLanguages();
+
+                    // Initialize default user preferences
+                    getUserRepository().initializeDefaultPreferences();
+
+                    Log.d(TAG, "Application initialization completed");
+                } catch (Exception e) {
+                    Log.e(TAG, "Error during application initialization", e);
+                }
+            });
+
+        } catch (Exception e) {
+            Log.e(TAG, "Error in application onCreate", e);
+        }
     }
 
     @Override
     public void onTerminate() {
         super.onTerminate();
-        if (applicationExecutor != null) {
-            applicationExecutor.shutdown();
+        Log.d(TAG, "TranslatorApplication onTerminate");
+
+        try {
+            if (applicationExecutor != null && !applicationExecutor.isShutdown()) {
+                applicationExecutor.shutdown();
+                Log.d(TAG, "Application executor shutdown");
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error shutting down application executor", e);
         }
     }
 }

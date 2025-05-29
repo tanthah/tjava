@@ -61,11 +61,18 @@ dependencies {
     implementation("androidx.camera:camera-lifecycle:1.3.1")
     implementation("androidx.camera:camera-view:1.3.1")
 
-    // ML Kit
+    // ML Kit - Updated versions
     implementation("com.google.mlkit:translate:17.0.2")
     implementation("com.google.mlkit:text-recognition:16.0.0")
     implementation("com.google.mlkit:language-id:17.0.4")
 
     // Network connectivity
     implementation("androidx.core:core:1.12.0")
+
+    // Google Play Services (Required for ML Kit)
+    implementation("com.google.android.gms:play-services-mlkit-text-recognition:19.0.0")
+    implementation("com.google.android.gms:play-services-mlkit-language-id:17.0.0")
+
+    // Gson for JSON parsing (if needed)
+    implementation("com.google.code.gson:gson:2.10.1")
 }

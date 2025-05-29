@@ -1,6 +1,7 @@
 package com.example.translator.ui.text;
 
 import android.content.Context;
+import android.util.Log;
 import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 import androidx.lifecycle.ViewModel;
@@ -15,6 +16,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class TextTranslationViewModel extends ViewModel {
+
+    private static final String TAG = "TextTranslationViewModel";
 
     private UserRepository userRepository;
     private LanguageRepository languageRepository;
@@ -37,13 +40,21 @@ public class TextTranslationViewModel extends ViewModel {
         this.userRepository = userRepository;
         this.languageRepository = languageRepository;
         this.translationService = new TranslationService(context);
-        this.executor = Executors.newSingleThreadExecutor();
+        this.executor = Executors.newFixedThreadPool(4);
 
         this.supportedLanguages = languageRepository.getAllSupportedLanguages();
         this.userPreferences = userRepository.getUserPreferences();
+
+        // Initialize loading state
+        _isLoading.setValue(false);
+
+        Log.d(TAG, "TextTranslationViewModel initialized");
     }
 
     public void translateText(String text, String sourceLanguage, String targetLanguage) {
+        Log.d(TAG, "translateText called with: " + text.substring(0, Math.min(50, text.length())) + "...");
+        Log.d(TAG, "Languages: " + sourceLanguage + " -> " + targetLanguage);
+
         executor.execute(() -> {
             try {
                 _isLoading.postValue(true);
@@ -51,68 +62,105 @@ public class TextTranslationViewModel extends ViewModel {
 
                 // Validate input
                 if (text == null || text.trim().isEmpty()) {
+                    Log.w(TAG, "Empty text provided");
                     _errorMessage.postValue("Please enter text to translate");
+                    _isLoading.postValue(false);
                     return;
                 }
 
-                if (text.length() > 5000) {
+                String cleanText = text.trim();
+                if (cleanText.length() > 5000) {
+                    Log.w(TAG, "Text too long: " + cleanText.length());
                     _errorMessage.postValue("Text too long. Maximum 5000 characters allowed.");
+                    _isLoading.postValue(false);
+                    return;
+                }
+
+                // Validate languages
+                if (sourceLanguage == null || targetLanguage == null ||
+                        sourceLanguage.isEmpty() || targetLanguage.isEmpty()) {
+                    Log.w(TAG, "Invalid languages: " + sourceLanguage + " -> " + targetLanguage);
+                    _errorMessage.postValue("Please select source and target languages");
+                    _isLoading.postValue(false);
                     return;
                 }
 
                 // Same language check
                 if (sourceLanguage.equals(targetLanguage)) {
-                    _translationResult.postValue(text);
+                    Log.d(TAG, "Same language, returning original text");
+                    _translationResult.postValue(cleanText);
+                    _isLoading.postValue(false);
                     return;
                 }
 
-                translationService.translateText(text, sourceLanguage, targetLanguage,
+                Log.d(TAG, "Starting translation...");
+                translationService.translateText(cleanText, sourceLanguage, targetLanguage,
                         new TranslationService.TranslationCallback() {
                             @Override
                             public void onSuccess(String translatedText) {
+                                Log.d(TAG, "Translation successful");
                                 _translationResult.postValue(translatedText);
+                                _isLoading.postValue(false);
                             }
 
                             @Override
                             public void onFailure(Exception exception) {
+                                Log.e(TAG, "Translation failed", exception);
+                                String errorMsg = "Translation failed";
+
                                 if (exception instanceof TranslationService.NetworkException) {
-                                    _errorMessage.postValue("No internet connection available");
+                                    errorMsg = "No internet connection available";
                                 } else if (exception instanceof TranslationService.TranslationException) {
-                                    _errorMessage.postValue(exception.getMessage() != null ? exception.getMessage() : "Translation service error");
-                                } else {
-                                    _errorMessage.postValue("An unexpected error occurred: " + exception.getMessage());
+                                    String msg = exception.getMessage();
+                                    if (msg != null && !msg.isEmpty()) {
+                                        errorMsg = msg;
+                                    } else {
+                                        errorMsg = "Translation service error";
+                                    }
+                                } else if (exception != null && exception.getMessage() != null) {
+                                    errorMsg = "Translation error: " + exception.getMessage();
                                 }
+
+                                _errorMessage.postValue(errorMsg);
+                                _isLoading.postValue(false);
                             }
                         });
 
             } catch (Exception e) {
-                _errorMessage.postValue("An unexpected error occurred: " + e.getMessage());
-            } finally {
+                Log.e(TAG, "Unexpected error in translateText", e);
+                _errorMessage.postValue("An unexpected error occurred: " +
+                        (e.getMessage() != null ? e.getMessage() : "Unknown error"));
                 _isLoading.postValue(false);
             }
         });
     }
 
     public void detectLanguage(String text) {
+        if (text == null || text.trim().isEmpty()) {
+            return;
+        }
+
         executor.execute(() -> {
             try {
-                if (text == null || text.trim().isEmpty()) return;
-
+                Log.d(TAG, "Detecting language for text...");
                 translationService.detectLanguage(text, new TranslationService.LanguageDetectionCallback() {
                     @Override
                     public void onSuccess(String detectedLanguage) {
+                        Log.d(TAG, "Language detected: " + detectedLanguage);
                         // Handle detection result if needed
                         // This could be used to automatically set source language
                     }
 
                     @Override
                     public void onFailure(Exception exception) {
+                        Log.w(TAG, "Language detection failed", exception);
                         // Language detection is optional, don't show error to user
                         // Just log for debugging
                     }
                 });
 
             } catch (Exception e) {
+                Log.w(TAG, "Error in language detection", e);
                 // Language detection is optional, don't show error to user
             }
         });
@@ -130,10 +178,19 @@ public class TextTranslationViewModel extends ViewModel {
     @Override
     protected void onCleared() {
         super.onCleared();
+        Log.d(TAG, "ViewModel cleared, cleaning up resources");
 
         // Cancel ongoing operations
-        if (executor != null) {
+        if (executor != null && !executor.isShutdown()) {
             executor.shutdown();
+            try {
+                if (!executor.awaitTermination(1, java.util.concurrent.TimeUnit.SECONDS)) {
+                    executor.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                executor.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
         }
 
         // Close translation service

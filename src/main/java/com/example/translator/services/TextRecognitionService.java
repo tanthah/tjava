@@ -3,25 +3,28 @@ package com.example.translator.services;
 import android.graphics.Bitmap;
 import android.util.Log;
 import com.google.android.gms.tasks.Task;
-import com.google.android.gms.tasks.Tasks;
 import com.google.mlkit.vision.common.InputImage;
 import com.google.mlkit.vision.text.Text;
 import com.google.mlkit.vision.text.TextRecognition;
 import com.google.mlkit.vision.text.TextRecognizer;
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions;
-import java.util.concurrent.TimeUnit;
 
 public class TextRecognitionService {
 
     private static final String TAG = "TextRecognitionService";
-    private static final long RECOGNITION_TIMEOUT = 15000L; // 15 seconds
     private static final int MIN_TEXT_LENGTH = 1;
     private static final int MAX_TEXT_LENGTH = 5000;
 
     private TextRecognizer textRecognizer;
 
     public TextRecognitionService() {
-        textRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS);
+        try {
+            // Use Latin script recognizer which works better for most languages
+            textRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS);
+            Log.d(TAG, "TextRecognitionService initialized successfully");
+        } catch (Exception e) {
+            Log.e(TAG, "Error initializing TextRecognitionService", e);
+        }
     }
 
     public interface TextRecognitionCallback {
@@ -30,6 +33,11 @@ public class TextRecognitionService {
     }
 
     public void recognizeTextFromBitmap(Bitmap bitmap, TextRecognitionCallback callback) {
+        if (callback == null) {
+            Log.e(TAG, "Callback is null");
+            return;
+        }
+
         if (!isValidBitmap(bitmap)) {
             Log.w(TAG, "Invalid bitmap provided");
             callback.onFailure(new IllegalArgumentException("Invalid bitmap"));
@@ -37,6 +45,7 @@ public class TextRecognitionService {
         }
 
         try {
+            Log.d(TAG, "Creating InputImage from bitmap: " + bitmap.getWidth() + "x" + bitmap.getHeight());
             InputImage image = InputImage.fromBitmap(bitmap, 0);
             recognizeTextFromImage(image, callback);
         } catch (Exception e) {
@@ -46,43 +55,55 @@ public class TextRecognitionService {
     }
 
     public void recognizeTextFromImage(InputImage inputImage, TextRecognitionCallback callback) {
+        if (callback == null) {
+            Log.e(TAG, "Callback is null");
+            return;
+        }
+
+        if (inputImage == null) {
+            Log.e(TAG, "InputImage is null");
+            callback.onFailure(new IllegalArgumentException("InputImage is null"));
+            return;
+        }
+
         try {
-            Log.d(TAG, "Starting text recognition...");
+            Log.d(TAG, "Starting text recognition process...");
 
             Task<Text> task = textRecognizer.process(inputImage);
 
-            // Add timeout to the task
-            Task<Text> timedTask = Tasks.call(() -> {
+            task.addOnSuccessListener(result -> {
                 try {
-                    return Tasks.await(task, RECOGNITION_TIMEOUT, TimeUnit.MILLISECONDS);
+                    String recognizedText = result.getText();
+                    Log.d(TAG, "Text recognition completed");
+                    Log.d(TAG, "Raw recognized text: '" + recognizedText + "'");
+
+                    if (recognizedText == null || recognizedText.trim().isEmpty()) {
+                        Log.d(TAG, "No text detected in image");
+                        callback.onFailure(new RuntimeException("No text detected"));
+                        return;
+                    }
+
+                    String cleanedText = cleanupRecognizedText(recognizedText);
+                    Log.d(TAG, "Cleaned text: '" + cleanedText + "'");
+
+                    if (cleanedText.length() < MIN_TEXT_LENGTH) {
+                        Log.d(TAG, "Detected text too short: " + cleanedText.length() + " chars");
+                        callback.onFailure(new RuntimeException("Detected text too short"));
+                        return;
+                    }
+
+                    if (cleanedText.length() > MAX_TEXT_LENGTH) {
+                        Log.w(TAG, "Detected text too long, truncating: " + cleanedText.length() + " chars");
+                        cleanedText = cleanedText.substring(0, MAX_TEXT_LENGTH);
+                    }
+
+                    Log.d(TAG, "Text recognition successful: " + cleanedText.length() + " chars");
+                    callback.onSuccess(cleanedText);
+
                 } catch (Exception e) {
-                    throw new RuntimeException("Text recognition timed out", e);
+                    Log.e(TAG, "Error processing recognition result", e);
+                    callback.onFailure(e);
                 }
-            });
-
-            timedTask.addOnSuccessListener(result -> {
-                String recognizedText = result.getText();
-
-                if (recognizedText == null || recognizedText.trim().isEmpty()) {
-                    Log.d(TAG, "No text detected in image");
-                    callback.onFailure(new RuntimeException("No text detected"));
-                    return;
-                }
-
-                if (recognizedText.length() < MIN_TEXT_LENGTH) {
-                    Log.d(TAG, "Detected text too short: " + recognizedText.length() + " chars");
-                    callback.onFailure(new RuntimeException("Detected text too short"));
-                    return;
-                }
-
-                if (recognizedText.length() > MAX_TEXT_LENGTH) {
-                    Log.w(TAG, "Detected text too long, truncating: " + recognizedText.length() + " chars");
-                    recognizedText = recognizedText.substring(0, MAX_TEXT_LENGTH);
-                }
-
-                Log.d(TAG, "Text recognition successful: " + recognizedText.length() + " chars");
-                String cleanedText = cleanupRecognizedText(recognizedText);
-                callback.onSuccess(cleanedText);
 
             }).addOnFailureListener(e -> {
                 Log.e(TAG, "Text recognition failed", e);
@@ -97,15 +118,34 @@ public class TextRecognitionService {
     }
 
     private boolean isValidBitmap(Bitmap bitmap) {
-        return bitmap != null &&
-                !bitmap.isRecycled() &&
-                bitmap.getWidth() > 0 &&
-                bitmap.getHeight() > 0 &&
-                bitmap.getWidth() <= 4096 &&
-                bitmap.getHeight() <= 4096;
+        if (bitmap == null) {
+            Log.e(TAG, "Bitmap is null");
+            return false;
+        }
+
+        if (bitmap.isRecycled()) {
+            Log.e(TAG, "Bitmap is recycled");
+            return false;
+        }
+
+        if (bitmap.getWidth() <= 0 || bitmap.getHeight() <= 0) {
+            Log.e(TAG, "Bitmap has invalid dimensions: " + bitmap.getWidth() + "x" + bitmap.getHeight());
+            return false;
+        }
+
+        if (bitmap.getWidth() > 4096 || bitmap.getHeight() > 4096) {
+            Log.w(TAG, "Bitmap very large: " + bitmap.getWidth() + "x" + bitmap.getHeight());
+            // Don't reject, but log warning
+        }
+
+        Log.d(TAG, "Bitmap is valid: " + bitmap.getWidth() + "x" + bitmap.getHeight() +
+                ", Config: " + bitmap.getConfig() + ", Bytes: " + bitmap.getByteCount());
+        return true;
     }
 
     private String cleanupRecognizedText(String text) {
+        if (text == null) return "";
+
         return text
                 .trim()
                 .replaceAll("\\s+", " ") // Replace multiple whitespaces with single space
@@ -116,20 +156,20 @@ public class TextRecognitionService {
     private String handleRecognitionError(Exception exception) {
         String message = exception.getMessage();
         if (message == null) {
-            message = "";
+            message = exception.getClass().getSimpleName();
         }
 
+        Log.e(TAG, "Recognition error details: " + message);
+
         if (message.toLowerCase().contains("timeout")) {
-            Log.e(TAG, "Text recognition timed out");
             return "Text recognition timed out";
         } else if (message.toLowerCase().contains("memory")) {
-            Log.e(TAG, "Memory error during text recognition");
             return "Memory error during text recognition";
         } else if (message.toLowerCase().contains("network")) {
-            Log.e(TAG, "Network error during text recognition");
             return "Network error during text recognition";
+        } else if (message.toLowerCase().contains("service")) {
+            return "Text recognition service unavailable";
         } else {
-            Log.e(TAG, "Unknown text recognition error: " + message);
             return "Text recognition failed: " + message;
         }
     }

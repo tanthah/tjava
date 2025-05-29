@@ -30,6 +30,7 @@ import com.example.translator.ui.text.LanguageSpinnerAdapter;
 import com.example.translator.ui.text.LanguageSpinnerAdapter.LanguageSpinnerItem;
 import com.example.translator.services.SpeechService;
 import com.example.translator.services.TextSummarizationService;
+import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -104,6 +105,8 @@ public class ImageTranslationActivity extends AppCompatActivity {
         observeViewModel();
 
         showImageSelectionMode();
+
+        Log.d(TAG, "ImageTranslationActivity initialized");
     }
 
     private void initializeViews() {
@@ -145,20 +148,25 @@ public class ImageTranslationActivity extends AppCompatActivity {
 
         // Set ImageView scaleType to matrix for manual control
         ivSelectedImage.setScaleType(ImageView.ScaleType.MATRIX);
+
+        Log.d(TAG, "Views initialized");
     }
 
     private void setupViewModel() {
         TranslatorApplication application = (TranslatorApplication) getApplication();
-        ImageTranslationViewModel.ImageTranslationViewModelFactory factory = new ImageTranslationViewModel.ImageTranslationViewModelFactory(
-                application.getUserRepository(),
-                application.getLanguageRepository(),
-                this
-        );
+        ImageTranslationViewModel.ImageTranslationViewModelFactory factory =
+                new ImageTranslationViewModel.ImageTranslationViewModelFactory(
+                        application.getUserRepository(),
+                        application.getLanguageRepository(),
+                        this
+                );
         viewModel = new ViewModelProvider(this, factory).get(ImageTranslationViewModel.class);
+        Log.d(TAG, "ViewModel setup completed");
     }
 
     private void setupClickListeners() {
         btnSelectImage.setOnClickListener(v -> {
+            Log.d(TAG, "Select image button clicked");
             if (checkStoragePermission()) {
                 openGallery();
             } else {
@@ -167,6 +175,7 @@ public class ImageTranslationActivity extends AppCompatActivity {
         });
 
         btnTakePhoto.setOnClickListener(v -> {
+            Log.d(TAG, "Take photo button clicked");
             if (checkCameraPermission()) {
                 openCamera();
             } else {
@@ -174,35 +183,54 @@ public class ImageTranslationActivity extends AppCompatActivity {
             }
         });
 
-        btnConfirmCrop.setOnClickListener(v -> confirmCrop());
+        btnConfirmCrop.setOnClickListener(v -> {
+            Log.d(TAG, "Confirm crop button clicked");
+            confirmCrop();
+        });
 
-        btnRetake.setOnClickListener(v -> showImageSelectionMode());
+        btnRetake.setOnClickListener(v -> {
+            Log.d(TAG, "Retake button clicked");
+            showImageSelectionMode();
+        });
 
-        btnTranslate.setOnClickListener(v -> translateImage());
+        btnTranslate.setOnClickListener(v -> {
+            Log.d(TAG, "Translate button clicked");
+            translateImage();
+        });
 
         // New speech buttons
         btnSpeakDetected.setOnClickListener(v -> {
             String sourceLanguage = getSelectedSourceLanguageCode();
+            Log.d(TAG, "Speak detected text in " + sourceLanguage);
             viewModel.speakDetectedText(sourceLanguage);
         });
 
         btnSpeakTranslated.setOnClickListener(v -> {
             String targetLanguage = getSelectedTargetLanguageCode();
+            Log.d(TAG, "Speak translated text in " + targetLanguage);
             viewModel.speakTranslatedText(targetLanguage);
         });
 
         btnSpeakSummary.setOnClickListener(v -> {
             String targetLanguage = getSelectedTargetLanguageCode();
+            Log.d(TAG, "Speak summary in " + targetLanguage);
             viewModel.speakSummary(targetLanguage);
         });
 
         // Summary button
-        btnSummarize.setOnClickListener(v -> showSummarizationDialog());
+        btnSummarize.setOnClickListener(v -> {
+            Log.d(TAG, "Summarize button clicked");
+            showSummarizationDialog();
+        });
 
         // Speech settings button
-        btnSpeechSettings.setOnClickListener(v -> showSpeechSettingsDialog());
+        btnSpeechSettings.setOnClickListener(v -> {
+            Log.d(TAG, "Speech settings button clicked");
+            showSpeechSettingsDialog();
+        });
 
         setupImageTouchListeners();
+        Log.d(TAG, "Click listeners setup completed");
     }
 
     private void setupImageTouchListeners() {
@@ -256,25 +284,28 @@ public class ImageTranslationActivity extends AppCompatActivity {
 
     private void observeViewModel() {
         viewModel.supportedLanguages.observe(this, languages -> {
+            Log.d(TAG, "Supported languages updated: " + (languages != null ? languages.size() : 0));
             List<com.example.translator.data.model.Language> cameraLanguages = languages.stream()
-                    .filter(lang -> lang.getSupportsCameraTranslation())
+                    .filter(lang -> lang.getSupportsCameraTranslation() || lang.getSupportsTextTranslation())
                     .collect(java.util.stream.Collectors.toList());
             setupLanguageSpinners(cameraLanguages);
         });
 
         viewModel.detectedText.observe(this, text -> {
-            String displayText = text != null ? text : "No text detected";
+            Log.d(TAG, "Detected text updated: " + (text != null ? text.length() + " chars" : "null"));
+            String displayText = (text != null && !text.isEmpty()) ? text : "No text detected";
             tvDetectedText.setText(displayText);
-            tvDetectedText.setVisibility(text != null && !text.isEmpty() ? View.VISIBLE : View.GONE);
-            btnSpeakDetected.setVisibility(text != null && !text.isEmpty() ? View.VISIBLE : View.GONE);
-            btnSummarize.setVisibility(text != null && !text.isEmpty() ? View.VISIBLE : View.GONE);
+            tvDetectedText.setVisibility(View.VISIBLE);
+            btnSpeakDetected.setVisibility((text != null && !text.isEmpty()) ? View.VISIBLE : View.GONE);
+            btnSummarize.setVisibility((text != null && !text.isEmpty()) ? View.VISIBLE : View.GONE);
         });
 
         viewModel.translationResult.observe(this, result -> {
-            String displayText = result != null ? result : "Translation will appear here";
+            Log.d(TAG, "Translation result updated: " + (result != null ? result.length() + " chars" : "null"));
+            String displayText = (result != null && !result.isEmpty()) ? result : "Translation will appear here";
             tvTranslatedText.setText(displayText);
-            tvTranslatedText.setVisibility(result != null && !result.isEmpty() ? View.VISIBLE : View.GONE);
-            btnSpeakTranslated.setVisibility(result != null && !result.isEmpty() ? View.VISIBLE : View.GONE);
+            tvTranslatedText.setVisibility(View.VISIBLE);
+            btnSpeakTranslated.setVisibility((result != null && !result.isEmpty()) ? View.VISIBLE : View.GONE);
 
             // Show results section when translation is available
             if (result != null && !result.isEmpty()) {
@@ -283,6 +314,7 @@ public class ImageTranslationActivity extends AppCompatActivity {
         });
 
         viewModel.summaryResult.observe(this, summary -> {
+            Log.d(TAG, "Summary result updated: " + (summary != null ? summary.length() + " chars" : "null"));
             if (summary != null && !summary.isEmpty()) {
                 tvSummary.setText(summary);
                 layoutSummary.setVisibility(View.VISIBLE);
@@ -294,24 +326,27 @@ public class ImageTranslationActivity extends AppCompatActivity {
         });
 
         viewModel.isLoading.observe(this, isLoading -> {
+            Log.d(TAG, "Loading state: " + isLoading);
             progressBar.setVisibility(isLoading ? View.VISIBLE : View.GONE);
             btnTranslate.setEnabled(!isLoading && (croppedBitmap != null || selectedImageBitmap != null));
             btnConfirmCrop.setEnabled(!isLoading);
         });
 
         viewModel.isSummarizing.observe(this, isSummarizing -> {
+            Log.d(TAG, "Summarizing state: " + isSummarizing);
             progressSummarization.setVisibility(isSummarizing ? View.VISIBLE : View.GONE);
             btnSummarize.setEnabled(!isSummarizing);
         });
 
         viewModel.errorMessage.observe(this, error -> {
-            if (error != null) {
+            if (error != null && !error.isEmpty()) {
+                Log.e(TAG, "Error message: " + error);
                 Toast.makeText(this, error, Toast.LENGTH_LONG).show();
             }
         });
 
         viewModel.speechRate.observe(this, rate -> {
-            // Update speech settings UI if needed
+            Log.d(TAG, "Speech rate updated: " + rate);
         });
     }
 
@@ -345,6 +380,7 @@ public class ImageTranslationActivity extends AppCompatActivity {
                     }
 
                     String targetLanguage = getSelectedTargetLanguageCode();
+                    Log.d(TAG, "Starting summarization with type: " + summaryType + ", language: " + targetLanguage);
                     viewModel.summarizeDetectedText(summaryType, targetLanguage);
                 })
                 .setNegativeButton("Cancel", null)
@@ -378,8 +414,12 @@ public class ImageTranslationActivity extends AppCompatActivity {
     }
 
     private void setupLanguageSpinners(List<com.example.translator.data.model.Language> languages) {
-        if (languages.isEmpty()) return;
+        if (languages == null || languages.isEmpty()) {
+            Log.w(TAG, "No languages available for spinners");
+            return;
+        }
 
+        Log.d(TAG, "Setting up language spinners with " + languages.size() + " languages");
         LanguageSpinnerAdapter adapter = new LanguageSpinnerAdapter(this, languages);
 
         spinnerSourceLanguage.setAdapter(adapter);
@@ -398,15 +438,24 @@ public class ImageTranslationActivity extends AppCompatActivity {
             }
         }
 
-        if (defaultSourceIndex != -1) spinnerSourceLanguage.setSelection(defaultSourceIndex);
-        if (defaultTargetIndex != -1) spinnerTargetLanguage.setSelection(defaultTargetIndex);
+        if (defaultSourceIndex != -1) {
+            spinnerSourceLanguage.setSelection(defaultSourceIndex);
+            Log.d(TAG, "Source language set to English (index " + defaultSourceIndex + ")");
+        }
+        if (defaultTargetIndex != -1) {
+            spinnerTargetLanguage.setSelection(defaultTargetIndex);
+            Log.d(TAG, "Target language set to Vietnamese (index " + defaultTargetIndex + ")");
+        }
     }
 
     private String getSelectedSourceLanguageCode() {
         try {
             LanguageSpinnerItem item = (LanguageSpinnerItem) spinnerSourceLanguage.getSelectedItem();
-            return item != null ? item.language.getLanguageCode() : "en";
+            String code = item != null ? item.language.getLanguageCode() : "en";
+            Log.d(TAG, "Selected source language: " + code);
+            return code;
         } catch (Exception e) {
+            Log.e(TAG, "Error getting source language code", e);
             return "en";
         }
     }
@@ -414,13 +463,17 @@ public class ImageTranslationActivity extends AppCompatActivity {
     private String getSelectedTargetLanguageCode() {
         try {
             LanguageSpinnerItem item = (LanguageSpinnerItem) spinnerTargetLanguage.getSelectedItem();
-            return item != null ? item.language.getLanguageCode() : "vi";
+            String code = item != null ? item.language.getLanguageCode() : "vi";
+            Log.d(TAG, "Selected target language: " + code);
+            return code;
         } catch (Exception e) {
+            Log.e(TAG, "Error getting target language code", e);
             return "vi";
         }
     }
 
     private void showImageSelectionMode() {
+        Log.d(TAG, "Showing image selection mode");
         layoutImageSelection.setVisibility(View.VISIBLE);
         layoutImagePreview.setVisibility(View.GONE);
         scrollResults.setVisibility(View.GONE);
@@ -428,10 +481,7 @@ public class ImageTranslationActivity extends AppCompatActivity {
         // Clear previous data
         selectedImageBitmap = null;
         croppedBitmap = null;
-        tvDetectedText.setText("");
-        tvTranslatedText.setText("");
-        tvSummary.setText("");
-        layoutSummary.setVisibility(View.GONE);
+        viewModel.clearResults();
         btnTranslate.setEnabled(false);
 
         // Reset matrix values
@@ -448,6 +498,7 @@ public class ImageTranslationActivity extends AppCompatActivity {
     }
 
     private void showImagePreviewMode(Bitmap bitmap) {
+        Log.d(TAG, "Showing image preview mode with bitmap: " + bitmap.getWidth() + "x" + bitmap.getHeight());
         layoutImageSelection.setVisibility(View.GONE);
         layoutImagePreview.setVisibility(View.VISIBLE);
         scrollResults.setVisibility(View.GONE);
@@ -461,6 +512,8 @@ public class ImageTranslationActivity extends AppCompatActivity {
         // Show crop overlay
         cropOverlay.setVisibility(View.VISIBLE);
         btnTranslate.setEnabled(true);
+
+        Log.d(TAG, "Image preview mode setup completed");
     }
 
     private void fitImageToView(Bitmap bitmap) {
@@ -471,6 +524,7 @@ public class ImageTranslationActivity extends AppCompatActivity {
             float bitmapHeight = bitmap.getHeight();
 
             if (viewWidth == 0f || viewHeight == 0f) {
+                Log.w(TAG, "ImageView dimensions not ready, skipping fit");
                 return;
             }
 
@@ -484,12 +538,13 @@ public class ImageTranslationActivity extends AppCompatActivity {
             translateY = (viewHeight - bitmapHeight * scaleFactor) / 2;
 
             updateImageMatrix();
+            Log.d(TAG, "Image fitted to view with scale: " + scaleFactor);
         });
     }
 
-    // Continue with remaining methods...
     private void openGallery() {
         try {
+            Log.d(TAG, "Opening gallery");
             Intent intent = new Intent(Intent.ACTION_PICK);
             intent.setType("image/*");
             intent.setDataAndType(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, "image/*");
@@ -502,6 +557,7 @@ public class ImageTranslationActivity extends AppCompatActivity {
 
     private void openCamera() {
         try {
+            Log.d(TAG, "Opening camera");
             Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
             if (intent.resolveActivity(getPackageManager()) != null) {
                 startActivityForResult(intent, REQUEST_IMAGE_CAMERA);
@@ -517,9 +573,12 @@ public class ImageTranslationActivity extends AppCompatActivity {
     private void confirmCrop() {
         if (selectedImageBitmap != null) {
             try {
+                Log.d(TAG, "Confirming crop");
                 RectF cropRect = cropOverlay.getCropRect();
                 croppedBitmap = cropBitmap(selectedImageBitmap, cropRect);
                 Toast.makeText(this, "Area selected. Tap translate to process.", Toast.LENGTH_SHORT).show();
+                Log.d(TAG, "Crop confirmed, cropped bitmap: " +
+                        (croppedBitmap != null ? croppedBitmap.getWidth() + "x" + croppedBitmap.getHeight() : "null"));
             } catch (Exception e) {
                 Log.e(TAG, "Error cropping image", e);
                 Toast.makeText(this, "Failed to crop image", Toast.LENGTH_SHORT).show();
@@ -544,46 +603,61 @@ public class ImageTranslationActivity extends AppCompatActivity {
             int width = Math.min(bitmap.getWidth() - x, (int) (cropRect.width() / scaleX));
             int height = Math.min(bitmap.getHeight() - y, (int) (cropRect.height() / scaleY));
 
+            Log.d(TAG, "Crop coordinates: x=" + x + ", y=" + y + ", width=" + width + ", height=" + height);
+
             if (width > 0 && height > 0) {
-                return Bitmap.createBitmap(bitmap, x, y, width, height);
+                Bitmap cropped = Bitmap.createBitmap(bitmap, x, y, width, height);
+                Log.d(TAG, "Cropped bitmap created: " + cropped.getWidth() + "x" + cropped.getHeight());
+                return cropped;
             } else {
-                return bitmap; // Return original if crop area is invalid
+                Log.w(TAG, "Invalid crop area, returning original bitmap");
+                return bitmap;
             }
         } catch (Exception e) {
             Log.e(TAG, "Error creating cropped bitmap", e);
-            return bitmap; // Return original bitmap on error
+            return bitmap;
         }
     }
 
     private void translateImage() {
         Bitmap bitmapToProcess = croppedBitmap != null ? croppedBitmap : selectedImageBitmap;
 
-        if (bitmapToProcess != null) {
-            String sourceLanguage = getSelectedSourceLanguageCode();
-            String targetLanguage = getSelectedTargetLanguageCode();
-
-            executor.execute(() -> {
-                viewModel.processImage(bitmapToProcess, sourceLanguage, targetLanguage);
-            });
-        } else {
+        if (bitmapToProcess == null) {
+            Log.e(TAG, "No bitmap available for translation");
             Toast.makeText(this, "Please select an image first", Toast.LENGTH_SHORT).show();
+            return;
         }
+
+        String sourceLanguage = getSelectedSourceLanguageCode();
+        String targetLanguage = getSelectedTargetLanguageCode();
+
+        Log.d(TAG, "Starting image translation");
+        Log.d(TAG, "Bitmap to process: " + bitmapToProcess.getWidth() + "x" + bitmapToProcess.getHeight());
+        Log.d(TAG, "Languages: " + sourceLanguage + " -> " + targetLanguage);
+
+        executor.execute(() -> {
+            viewModel.processImage(bitmapToProcess, sourceLanguage, targetLanguage);
+        });
     }
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        Log.d(TAG, "onActivityResult: requestCode=" + requestCode + ", resultCode=" + resultCode);
 
         if (resultCode == Activity.RESULT_OK) {
             switch (requestCode) {
                 case REQUEST_IMAGE_GALLERY:
                     if (data != null && data.getData() != null) {
                         Uri uri = data.getData();
+                        Log.d(TAG, "Image selected from gallery: " + uri);
                         try {
                             Bitmap bitmap = loadBitmapFromUri(uri);
                             if (bitmap != null) {
+                                Log.d(TAG, "Loaded bitmap from gallery: " + bitmap.getWidth() + "x" + bitmap.getHeight());
                                 showImagePreviewMode(bitmap);
                             } else {
+                                Log.e(TAG, "Failed to load bitmap from URI");
                                 Toast.makeText(this, "Failed to load image", Toast.LENGTH_SHORT).show();
                             }
                         } catch (Exception e) {
@@ -599,8 +673,10 @@ public class ImageTranslationActivity extends AppCompatActivity {
                         if (extras != null) {
                             Bitmap bitmap = (Bitmap) extras.get("data");
                             if (bitmap != null) {
+                                Log.d(TAG, "Captured bitmap from camera: " + bitmap.getWidth() + "x" + bitmap.getHeight());
                                 showImagePreviewMode(bitmap);
                             } else {
+                                Log.e(TAG, "Camera returned null bitmap");
                                 Toast.makeText(this, "Failed to capture image", Toast.LENGTH_SHORT).show();
                             }
                         }
@@ -615,7 +691,13 @@ public class ImageTranslationActivity extends AppCompatActivity {
 
     private Bitmap loadBitmapFromUri(Uri uri) {
         try {
-            return MediaStore.Images.Media.getBitmap(getContentResolver(), uri);
+            Log.d(TAG, "Loading bitmap from URI: " + uri);
+            Bitmap bitmap = MediaStore.Images.Media.getBitmap(getContentResolver(), uri);
+            Log.d(TAG, "Successfully loaded bitmap: " + (bitmap != null ? bitmap.getWidth() + "x" + bitmap.getHeight() : "null"));
+            return bitmap;
+        } catch (IOException e) {
+            Log.e(TAG, "IOException loading bitmap from URI", e);
+            return null;
         } catch (Exception e) {
             Log.e(TAG, "Error loading bitmap from URI", e);
             return null;
@@ -623,22 +705,29 @@ public class ImageTranslationActivity extends AppCompatActivity {
     }
 
     private boolean checkCameraPermission() {
-        return ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED;
+        boolean hasPermission = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED;
+        Log.d(TAG, "Camera permission check: " + hasPermission);
+        return hasPermission;
     }
 
     private boolean checkStoragePermission() {
+        boolean hasPermission;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            return ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED;
+            hasPermission = ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED;
         } else {
-            return ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
+            hasPermission = ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
         }
+        Log.d(TAG, "Storage permission check: " + hasPermission);
+        return hasPermission;
     }
 
     private void requestCameraPermission() {
+        Log.d(TAG, "Requesting camera permission");
         ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.CAMERA}, CAMERA_PERMISSION_CODE);
     }
 
     private void requestStoragePermission() {
+        Log.d(TAG, "Requesting storage permission");
         String[] permissions;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             permissions = new String[]{Manifest.permission.READ_MEDIA_IMAGES};
@@ -651,19 +740,24 @@ public class ImageTranslationActivity extends AppCompatActivity {
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        Log.d(TAG, "onRequestPermissionsResult: requestCode=" + requestCode);
 
         switch (requestCode) {
             case CAMERA_PERMISSION_CODE:
                 if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    Log.d(TAG, "Camera permission granted");
                     openCamera();
                 } else {
+                    Log.d(TAG, "Camera permission denied");
                     Toast.makeText(this, "Camera permission required", Toast.LENGTH_SHORT).show();
                 }
                 break;
             case STORAGE_PERMISSION_CODE:
                 if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    Log.d(TAG, "Storage permission granted");
                     openGallery();
                 } else {
+                    Log.d(TAG, "Storage permission denied");
                     Toast.makeText(this, "Storage permission required", Toast.LENGTH_SHORT).show();
                 }
                 break;
@@ -673,6 +767,7 @@ public class ImageTranslationActivity extends AppCompatActivity {
     @Override
     protected void onPause() {
         super.onPause();
+        Log.d(TAG, "Activity paused, stopping speech");
         viewModel.stopSpeaking();
     }
 
@@ -685,7 +780,8 @@ public class ImageTranslationActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        if (executor != null) {
+        Log.d(TAG, "Activity destroyed");
+        if (executor != null && !executor.isShutdown()) {
             executor.shutdown();
         }
     }
